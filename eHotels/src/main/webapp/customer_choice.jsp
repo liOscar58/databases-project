@@ -19,8 +19,8 @@
     </head>
 </head>
 <body>
-<button onclick="window.location.href='customer_choice.jsp'">Customer View</button>
-<button onclick="window.location.href='update_choice.jsp'">Employee View</button>
+<button onclick="window.location.href='customer_login.jsp'">Login to existing account</button>
+<button onclick="window.location.href='customer_create.jsp'">Create a new account</button>
 
 
 </body>

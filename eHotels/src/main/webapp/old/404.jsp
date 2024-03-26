@@ -2,7 +2,7 @@
 <html>
 <head>
     <title>404 Page</title>
-    <link rel="stylesheet" href="assets/css/styles.css" />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
 </head>
 
 <div class="main">
