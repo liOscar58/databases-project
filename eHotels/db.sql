@@ -4,7 +4,7 @@ CREATE TABLE hotel_chain
         id                        serial       PRIMARY KEY,
 		name					  varchar(45)  NOT NULL,
         address_of_central_office varchar(200) NOT NULL,
-        number_of_hotels          int          NOT NULL
+        number_of_hotels          int          NOT NULL CHECK (number_of_hotels >= 2)
     );
 	
 insert into hotel_chain values 
@@ -19,7 +19,7 @@ CREATE TABLE inst_hotel_chain_phone_number
     (
         hotel_chain_id int NOT NULL,
         phone_number   varchar(15),
-        FOREIGN KEY (hotel_chain_ID) REFERENCES hotel_chain (id) ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (hotel_chain_id) REFERENCES hotel_chain (id) ON DELETE CASCADE ON UPDATE CASCADE,
         PRIMARY KEY (hotel_chain_id, phone_number)
     );
 
@@ -40,7 +40,7 @@ CREATE TABLE inst_hotel_chain_contact_email
     (
         hotel_chain_id int          NOT NULL,
         contact_email  varchar(100) NOT NULL CHECK (contact_email LIKE '_%@_%._%'),
-        FOREIGN KEY (hotel_chain_ID) REFERENCES hotel_chain (id) ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (hotel_chain_id) REFERENCES hotel_chain (id) ON DELETE CASCADE ON UPDATE CASCADE,
         PRIMARY KEY (hotel_chain_id, contact_email)
     );
 
@@ -63,10 +63,10 @@ CREATE TABLE hotel
         hotel_chain_id  int          NOT NULL,
 		name		    varchar(45)  NOT NULL,
         category        int  		 NOT NULL,
-        number_of_rooms int          NOT NULL,
+        number_of_rooms int          NOT NULL CHECK (number_of_rooms >= 5),
         address         varchar(200) NOT NULL,
         contact_email   varchar(100) NOT NULL CHECK (contact_email LIKE '_%@_%._%'),
-        FOREIGN KEY (hotel_chain_ID) REFERENCES hotel_chain (id) ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (hotel_chain_id) REFERENCES hotel_chain (id) ON DELETE CASCADE ON UPDATE CASCADE,
         PRIMARY KEY (id, hotel_chain_id)
     );
 
@@ -121,11 +121,13 @@ CREATE TABLE room
         price           int         NOT NULL,
         capacity        varchar(45) NOT NULL,
         room_view       varchar(20) NOT NULL,
-        can_be_extended boolean     NOT NULL, -- 1 (True) or 0 (False)
-        has_problems    boolean     NOT NULL, -- 1 (True) or 0 (False)
+        can_be_extended boolean     NOT NULL CHECK (can_be_extended IN (1, 0)), -- 1 (True) or 0 (False)
+        has_problems    boolean     NOT NULL CHECK (has_problems IN (1, 0)), -- 1 (True) or 0 (False)
         FOREIGN KEY (hotel_chain_id, hotel_id) REFERENCES hotel (hotel_chain_id, id) ON DELETE CASCADE ON UPDATE CASCADE,
         PRIMARY KEY (hotel_chain_id, hotel_id, room_number)
     );
+
+CREATE INDEX index_room_hotel_chain_id_to_room_number ON room (hotel_chain_id, hotel_id, room_number); -- indexing rooms in the context of the hotel and its chain makes sense when it comes to easily querying rooms in the hotel chain available on certain dates
 	
 insert into room values 
 (1, 5, 1, 791, 'Single', 'Mountain view', true, false),
@@ -178,6 +180,12 @@ insert into inst_amenities values
 (4, 2, 2, 'Jacuzzi tub'),
 (2, 13, 13, 'Flat-screen TV');
 
+DROP TABLE IF EXISTS person;
+CREATE TABLE person
+    (
+        SIN                  int          PRIMARY KEY,
+    );
+
 DROP TABLE IF EXISTS customer;
 CREATE TABLE customer
     (
@@ -185,8 +193,26 @@ CREATE TABLE customer
         first_name           varchar(45)  NOT NULL,
         last_name            varchar(45)  NOT NULL,
         address              varchar(200) NOT NULL,
-        date_of_registration DATE         NOT NULL -- YYYY-MM-DD
+        date_of_registration DATE         NOT NULL CHECK (date_of_registration <= CURRENT_DATE);
+, -- YYYY-MM-DD
+	FOREIGN KEY (SIN) REFERENCES person(SIN) ON DELETE CASCADE ON UPDATE CASCADE
     );
+
+CREATE TRIGGER check_registration_date
+BEFORE INSERT OR UPDATE ON customer
+FOR EACH ROW
+EXECUTE FUNCTION ex_check_registration_date();
+
+CREATE OR REPLACE FUNCTION ex_check_registration_date()
+RETURNS TRIGGER AS $BODY$
+BEGIN
+    IF NEW.date_of_registration > CURRENT_DATE THEN
+        RAISE EXCEPTION 'Registration date must be in the past or present.';
+    END IF;
+    RETURN NEW;
+END;
+
+$BODY$ LANGUAGE plpgsql;
 
 insert into customer values 
 (17, 'Ganny', 'Avramovich', '3580 Oak Road', '2023-08-14'),
@@ -207,7 +233,8 @@ CREATE TABLE employee
         first_name varchar(45)  NOT NULL,
         last_name  varchar(45)  NOT NULL,
         address    varchar(200) NOT NULL,
-        role       varchar(45)  NOT NULL
+        role       varchar(45)  NOT NULL,
+	FOREIGN KEY (SIN) REFERENCES person(SIN) ON DELETE CASCADE ON UPDATE CASCADE
     );
 
 insert into employee values 
@@ -311,6 +338,8 @@ CREATE TABLE booking
         PRIMARY KEY (hotel_chain_id, hotel_id, room_number, customer_id)
     );
 
+CREATE INDEX index_booking_date ON booking (date); -- Indexing booking dates makes sense because bookings will mostly likely be queried based on the different dates
+
 insert into booking values 
 	(1, 5, 1, 17, '2023-10-10'),
 	(2, 4, 2, 89, '2023-10-11'),
@@ -332,8 +361,21 @@ CREATE TABLE renting
         PRIMARY KEY (hotel_chain_id, hotel_id, room_number, customer_id, employee_id)
     );
 
+CREATE INDEX index_renting_date ON renting (date); -- Indexing renting dates makes sense for a similar reason to booking dates since they are initmately related in the actual customer enrollment process of a hotel
+
 insert into renting values 
 	(1, 5, 1, 17, 31, '2023-11-12');
+
+
+CREATE VIEW available_rooms_in_area AS
+SELECT hotel_chain_id, hotel_id, COUNT(*) AS num_available_rooms from room
+WHERE has_problems = 0
+GROUP BY hotel_chain_id, hotel_id;
+
+CREATE VIEW agg_capacity_in_hotel AS
+SELECT hotel_chain_id, hotel_id, SUM(capacity) AS total_capacity from room
+GROUP BY hotel_chain_id, hotel_id;
+
 
 -- DROP SCHEMA public Cascade;  -- To delete all tables
 -- create schema public;
